@@ -1,5 +1,12 @@
+# specific branch build with batching
 trigger:
-- master
+  # If you set "batch: true", when a pipeline is running, the system waits until the run is completed,
+  # then starts another run with all changes that have not yet been built. This avoids simultaneous runs
+  # of the cannary that could mess up the traffic.
+  batch: true
+  branches:
+    include:
+    - master
 
 pool:
   vmImage: Ubuntu-16.04
