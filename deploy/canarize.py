@@ -84,7 +84,7 @@ def gen_mapping(args, service, weight=None, labels={}):
         mapping["metadata"]["labels"] = labels
 
     if weight:
-        mapping["spec"]["weigth"] = weight
+        mapping["spec"]["weight"] = weight
 
     return mapping
 
