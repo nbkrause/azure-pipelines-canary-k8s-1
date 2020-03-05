@@ -100,13 +100,13 @@ traffic to the canary with the given _weight_.
   - Add another _Kubernetes_ service connection for connecting to your existing
     kubernetes cluster. Name it `k8sEnvironment`.
 
-### Customizing the pipeline
+### Customizing the pipeline definition
 
 * Review the variables in the `azure-pipelines.yml`, specially the `containerRegistry` and `environment`.
   Their values should match the service connections created previously.
 * In `manifests/deployment.yml`, replace the `image` with your container registry's URL.
 
-### Creating the pipeline
+### Creating the Azure DevOps Pipeline
 
 * In your Azure DevOps project, navigate to "_Pipelines_" > "_New pipeline_".
 * Connect & Select your code location. _Azure Repos Git_ is a great option if you do not wish to open your GitHub account. It will however require you to push your repo to a new location.
