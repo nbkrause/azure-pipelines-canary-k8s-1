@@ -20,10 +20,21 @@ control over the traffic without the need to change the number of pods.
 ## Proposed solution
 
 Instead of using the Azure pipelines facilities for splitting traffic with
-new Pods, we have created a new [`canarize.py`](deploy/canarize.py) script that,
-given the manifests with your `Service`/`Deployment`, a new `-canary` version of
-those will be created. In addition, it will also create a `Mapping` that will send
-traffic to the canary with the given _weight_.
+new Pods, we have created a new [`canarize.py`](deploy/canarize.py) script for
+generating canary deployments and `Mapping`s for sending traffic to these deployments.
+
+The Azure Pipeline will deploy the canary by iterating over a list of _weights_.
+For each weight, and given
+
+- the manifests for your `Service`/`Deployment`
+- an `image` built and pushed with the current source code
+- the current _weight_ for the canary
+
+it will create and apply:
+
+- new `*-canary` versions of those `Service`/`Deployment`, using the
+  `image` from the current build.
+- a `Mapping` that will send _weight_% of the requests to the canary `Service`.
 
 ## References
 
@@ -100,7 +111,7 @@ traffic to the canary with the given _weight_.
     one of the existing registries. Assign a name like `azurepipelinescanaryk8s`
   - Add another _Kubernetes_ service connection for connecting to your existing
     kubernetes cluster. Name it `k8sEnvironment`.
-  - Configure a namespace for your environment by navigating to "_Pipelines_" > "_Environments_" > "`k8sEnvironment`". 
+  - Configure a namespace for your environment by navigating to "_Pipelines_" > "_Environments_" > "`k8sEnvironment`".
     Click the "Add Resource" button and chose "Add Kubernetes namespace". Select the desired namespace (`default` for this sample), then "Validate and create".
 
 ### Customizing the pipeline definition
