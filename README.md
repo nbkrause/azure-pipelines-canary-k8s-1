@@ -75,13 +75,9 @@ traffic to the canary with the given _weight_.
   ```shell script
   $ az aks get-credentials --resource-group Ambassador-Azure-Pipeline --name Ambassador-Azure-Pipeline
   ```
-* Install Ambassador int this cluster by following [the instructions](https://www.getambassador.io/user-guide/install/). For example,
+* Install Ambassador in this cluster by following [the instructions](https://www.getambassador.io/user-guide/install/). For example,
   ```shell script
-  helm repo add datawire https://www.getambassador.io
-  kubectl create namespace ambassador
-  helm install ambassador --namespace ambassador datawire/ambassador
-  AMB_IP=$(kubectl get -n ambassador service ambassador -o 'go-template={{range .status.loadBalancer.ingress}}{{print .ip "\n"}}{{end}}')
-  edgectl login -n ambassador $AMB_IP
+  edgectl install
   ```
 * Install the prometheus operator. You can do it with Helm 3, with:
   ```shell script
@@ -92,9 +88,13 @@ traffic to the canary with the given _weight_.
 
 ## Preparing the repo
 
+### Azure DevOps project
+
+* Navigate to "_All services_" > "_Azure DevOps_", or go to `https://dev.azure.com` directly. Register a new project.
+
 ### Connections
 
-* Go to `https://dev.azure.com/<user>/<project>/_settings/adminservices` and:
+* In your Azure DevOps project, navigate to "_Project settings_" > "_Service connections_", or go to `https://dev.azure.com/<user>/<project>/_settings/adminservices` directly. Then:
   - Create a new _Docker Registry_ connection, select `Azure Container Registry` and select
     one of the existing registries. Assign a name like `azurepipelinescanaryk8s`
   - Add another _Kubernetes_ service connection for connecting to your existing
@@ -105,3 +105,9 @@ traffic to the canary with the given _weight_.
 * Review the variables in the `azure-pipelines.yml`, specially the `containerRegistry` and `environment`.
   Their values should match the service connections created previously.
 * In `manifests/deployment.yml`, replace the `image` with your container registry's URL.
+
+### Creating the pipeline
+
+* In your Azure DevOps project, navigate to "_Pipelines_" > "_New pipeline_".
+* Connect & Select your code location. _Azure Repos Git_ is a great option if you do not wish to open your GitHub account. It will however require you to push your repo to a new location.
+* Review & Run!
