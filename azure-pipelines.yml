@@ -1,0 +1,198 @@
+trigger:
+- master
+
+pool:
+  vmImage: Ubuntu-16.04
+
+resources:
+- repo: self
+
+variables:
+  namespace: default
+  # tags for images: the tag for the image in the base Deployment, and the tag in the new build
+  baseTag: '$(Build.BuildId)'
+  buildTag: '$(Build.BuildId)'
+  # replace with name of your Docker registry service connection
+  # we assume the registry will have the same name (ie, $(containerRegistry).azurecr.io)
+  containerRegistry: azurepipelinescanaryk8s
+  environment: k8sEnvironment.default # replace with the of your Kubernetes service connection and namespace
+  imageName: azure-pipelines-canary-k8s
+  vmImageName: Ubuntu-16.04
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+    # build the image for `./app` and push it to $(containerRegistry)
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: Docker@2
+      displayName: Build and push image
+      inputs:
+        containerRegistry: $(containerRegistry)
+        repository: $(imageName)
+        command: buildAndPush
+        Dockerfile: app/Dockerfile
+        tags: $(buildTag)
+    - upload: manifests
+      artifact: manifests
+    - upload: misc
+      artifact: misc
+
+- stage: Deploy
+  displayName: Deploy stage
+  dependsOn: Build
+
+  jobs:
+  - deployment: Deploy_Static_Manifests
+    displayName: Deploy Static Manifests
+    pool:
+      vmImage: $(vmImageName)
+    environment: $(environment)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - task: KubernetesManifest@0
+            displayName: Create Secret
+            inputs:
+              action: createSecret
+              namespace: $(namespace)
+              secretType: dockerRegistry
+              secretName: $(imageName)
+              dockerRegistryEndpoint: $(containerRegistry)
+
+          # Other deployments in the Kubernetes cluster
+          - task: KubernetesManifest@0
+            displayName: Deploy Fortio and ServiceMonitor
+            inputs:
+              action: deploy
+              manifests: $(Build.SourcesDirectory)/misc/*
+
+  - deployment: Deploy_Base
+    displayName: Deploy Base
+    pool:
+      vmImage: $(vmImageName)
+    environment: $(environment)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          # Initial deployment of the application
+          # This should be a stable deployment.
+          - checkout: self
+          - task: KubernetesManifest@0
+            displayName: Create base deployment
+            inputs:
+              action: deploy
+              namespace: $(namespace)
+              manifests: $(Build.SourcesDirectory)/manifests/*.yml
+              containers: $(containerRegistry).azurecr.io/$(imageName):$(baseTag)
+              imagePullSecrets: $(imageName)
+
+  - deployment: Deploy_Canary
+    displayName: Deploy Canary
+    pool:
+      vmImage: $(vmImageName)
+    environment: $(environment)
+    strategy:
+      canary:
+        increments: [25, 50]
+
+        deploy:
+          steps:
+          # create a clone of the manifests we already applied, but "canarized"
+          - checkout: self
+          - task: UsePythonVersion@0
+            displayName: Set Python 3
+            inputs:
+              versionSpec: '3.x'
+
+          # generate the Service/Deployment/Mapping for the Canary, with the built image
+          # for every image $(containerRegistry).azurecr.io/$(imageName), replace the tag by $(buildTag)
+          - script: ./deploy/canarize.py --debug -M --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) -o $(Pipeline.Workspace)/canary.yml -w $(strategy.increment) --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) ./manifests/*
+            displayName: Generate canary
+
+          # apply the canary deployment
+          - task: KubernetesManifest@0
+            displayName: Deploy canary
+            inputs:
+              action: deploy
+              namespace: $(namespace)
+              manifests: $(Pipeline.Workspace)/canary.yml
+              imagePullSecrets: $(imageName)
+
+        # postRouteTraffic:
+        #   # postRouteTraffic - Use to run the tasks after the traffic is routed. Typically these tasks
+        #   # monitor the health of the updated version for defined interval. The results of a lifecycle
+        #   # hook event can trigger a rollback.
+        #   steps:
+        #   - checkout: self
+        #   - script: ./deploy/perform-e2e-tests.sh
+
+        on:
+          # if the canary has failed,
+          # 1) remove the traffic to the canary
+          # 2) remove the canary Service and Deployment
+          failure:
+            steps:
+            - checkout: self
+            - task: UsePythonVersion@0
+              displayName: Set Python 3
+              inputs:
+                versionSpec: '3.x'
+
+            # generate the Service/Deployment for the canary, as well as Mapping
+            # not really important the values: we will use this manifest for removing deleting things
+            - script: ./deploy/canarize.py --debug -o $(Pipeline.Workspace)/canary.yml -m ./manifests/*
+              displayName: Generate manifests for canary
+
+            # remove the Mapping and the Service/Deployment
+            - task: KubernetesManifest@0
+              displayName: Remove the Canary
+              inputs:
+                action: delete
+                arguments: -f $(Pipeline.Workspace)/canary.yml
+                namespace: $(namespace)
+                manifests: $(Pipeline.Workspace)/canary.yml
+
+          # if the canary has been successful,
+          # 1) re-apply the manifests but with the image set to use $(buildTag)
+          # 2) remove the traffic to the canary
+          # 3) remove the canary Service and Deployment
+          success:
+            steps:
+            - checkout: self
+            - task: UsePythonVersion@0
+              displayName: Set Python 3
+              inputs:
+                versionSpec: '3.x'
+
+            # upgrade the image in the base Service/Deployment for using tag=$(buildTag)
+            - task: KubernetesManifest@0
+              displayName: Set $(buildTag) as image in base Deployment
+              inputs:
+                action: deploy
+                namespace: $(namespace)
+                manifests: $(Build.SourcesDirectory)/manifests/*.yml
+                # for every image $(containerRegistry).azurecr.io/$(imageName):*, replace the tag by $(buildTag)
+                containers: $(containerRegistry).azurecr.io/$(imageName):$(buildTag)
+                imagePullSecrets: $(imageName)
+
+            # generate the Service/Deployment for the canary, as well as Mapping
+            # not really important the values: we wil use this manifest for removing deleting things
+            - script: ./deploy/canarize.py --debug -m -o $(Pipeline.Workspace)/canary.yml ./manifests/*
+              displayName: Generate manifests for Canary
+
+            # remove the Service/Deployment/Mappings of the canary
+            - task: KubernetesManifest@0
+              displayName: Remove the Canary
+              inputs:
+                action: delete
+                arguments: -f $(Pipeline.Workspace)/canary.yml
+                namespace: $(namespace)
+                manifests: $(Pipeline.Workspace)/canary.yml
