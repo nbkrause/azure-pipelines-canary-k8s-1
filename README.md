@@ -46,12 +46,13 @@ traffic to the canary with the given _weight_.
   to the image published earlier. This manifest file is used not just for the stable version of
   `Deployment` object, but for deriving the `-canary` variant of the workloads as well.
 
-  `service.yml` - Creates a `sampleapp` `Service` for routing requests to the pods spun up by the
-  `Deployment` (stable and canary) mentioned above.
+  `service.yml` - Creates a `sampleapp` `Service` for routing requests to the pods spun up by the `Deployment`.
+
+  `mapping.yml` - Ambassador `Mapping` for routing all the requests to `/` to the `sampleapp` `Service`.
 
 * `./misc`:
 
-  `service-monitor.yml` - Used for setup of a ServiceMonitor object to set up Prometheus metric scraping.
+  `service-monitor.yml` - Used for setup of a `ServiceMonitor` object to set up Prometheus metric scraping.
 
   `fortio-deploy.yml` - Used for setup of fortio deployment that is subsequently used as a
   load-testing tool to send a stream of requests to the sampleapp service deployed earlier.
@@ -59,6 +60,10 @@ traffic to the canary with the given _weight_.
   the Deployment objects that get created during the course of this how-to guide - sampleapp,
   sampleapp-baseline and sampleapp-canary, the stream of requests sent to sampleapp get
   routed to pods under all these three deployments.
+
+* `./misc`:
+
+  `canarize.py` - Script for generating a Canary for a `Service`/`Deployment`.
 
 ## Preparing your cluster
 

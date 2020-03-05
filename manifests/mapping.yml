@@ -1,0 +1,8 @@
+---
+apiVersion: getambassador.io/v1
+kind: Mapping
+metadata:
+  name: mapping-for-sampleapp
+spec:
+  prefix: /
+  service: sampleapp

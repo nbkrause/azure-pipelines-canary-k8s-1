@@ -7,7 +7,15 @@ import sys
 from os import path
 
 
+# the suffix added to all the resources
+DEFAULT_CANARY_SUFFIX = "-canary"
+
+# default Prefix for the Mappings to the Service
+DEFAULT_MAPPINGS_PREFIX = "/"
+
 # hack for installing some package if it is not available
+
+
 def install_and_import(importname, package):
     import importlib
     try:
@@ -22,11 +30,13 @@ def install_and_import(importname, package):
 yaml = install_and_import("yaml", "pyyaml")
 
 
-# the suffix added to all the resources
-DEFAULT_CANARY_SUFFIX = "-canary"
-
-# default Prefix for the Mappings to the Service
-DEFAULT_MAPPINGS_PREFIX = "/"
+class StoreDictKeyPair(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        my_dict = {}
+        for kv in values.split(","):
+            k, v = kv.split("=")
+            my_dict[k] = v
+        setattr(namespace, self.dest, my_dict)
 
 
 def image_tag(name):
@@ -50,7 +60,7 @@ def image_replace_tag(name, new_tag):
         return name
 
 
-def gen_mapping(args, service, weight=None):
+def gen_mapping(args, service, weight=None, labels={}):
     """
     Generate a Mapping for a service/prefix and (optional) weight
     """
@@ -70,13 +80,16 @@ def gen_mapping(args, service, weight=None):
     if args.namespace:
         mapping["metadata"]["namespace"] = args.namespace
 
+    if len(labels) > 0:
+        mapping["metadata"]["labels"] = labels
+
     if weight:
         mapping["spec"]["weigth"] = weight
 
     return mapping
 
 
-def canarize_deployment(args, input_yaml):
+def canarize_deployment(args, input_yaml, labels={}):
     """
     Create a canary for an existing Deployment.
     We do this by:
@@ -112,10 +125,16 @@ def canarize_deployment(args, input_yaml):
     if args.namespace:
         output_yaml["metadata"]["namespace"] = args.namespace
 
+    if len(labels) > 0:
+        if len(output_yaml["metadata"]["labels"]) > 0:
+            output_yaml["metadata"]["labels"].update(labels)
+        else:
+            output_yaml["metadata"]["labels"] = labels
+
     return [output_yaml]
 
 
-def canarize_service(args, input_yaml):
+def canarize_service(args, input_yaml, labels={}):
     """
     Create a canary for an existing Service.
     We do this by:
@@ -140,18 +159,18 @@ def canarize_service(args, input_yaml):
 
     res += [output_yaml]
 
-    # (maybe) create the Mappings for splitting traffic to the base/canary services
     if args.gen_mapping:
-        base_service_name = input_yaml["metadata"]["name"]
-        print(f"# Creating Mapping for {base_service_name}")
-        res += [gen_mapping(args, base_service_name)]
-
-    if args.gen_mapping or args.gen_mapping_canary:
         canary_service_name = output_yaml["metadata"]["name"]
         print(
             f"# Creating Mapping for Service {canary_service_name} (weight: {args.canary_weight})")
         res += [gen_mapping(args, canary_service_name,
-                            weight=args.canary_weight)]
+                            weight=args.canary_weight, labels=labels)]
+
+    if len(labels) > 0:
+        if len(output_yaml["metadata"]["labels"]) > 0:
+            output_yaml["metadata"]["labels"].update(labels)
+        else:
+            output_yaml["metadata"]["labels"] = labels
 
     return res
 
@@ -161,11 +180,11 @@ def canarize(args, input_yaml):
     Create a canary for existing resources
     """
     if input_yaml["kind"] == "Deployment":
-        return canarize_deployment(args, input_yaml)
+        return canarize_deployment(args, input_yaml, args.labels)
     elif input_yaml["kind"] == "Service":
-        return canarize_service(args, input_yaml)
+        return canarize_service(args, input_yaml, args.labels)
     else:
-        return input_yaml
+        return []
 
 
 if __name__ == "__main__":
@@ -175,11 +194,7 @@ if __name__ == "__main__":
     parser.add_argument("--prefix", "-P",
                         default=DEFAULT_MAPPINGS_PREFIX,
                         help="prefix for all the Mappings")
-    parser.add_argument("--gen-mapping", "-M",
-                        action="store_true",
-                        default=False,
-                        help="generate a Mapping for the canary as well as for the base service")
-    parser.add_argument("--gen-mapping-canary", "-m",
+    parser.add_argument("--gen-mapping", "-m",
                         action="store_true",
                         default=False,
                         help="generate a Mapping only for the canary")
@@ -201,6 +216,11 @@ if __name__ == "__main__":
                         metavar="FILE", type=argparse.FileType('w'),
                         default=sys.stdout,
                         help="output file")
+    parser.add_argument("--labels", "-l",
+                        dest="labels",
+                        action=StoreDictKeyPair,
+                        metavar="KEY1=VAL1,KEY2=VAL2...",
+                        help="extra labels for generated resources")
     parser.add_argument("files", metavar="FILE", type=argparse.FileType('r'),
                         default=sys.stdin, nargs='+', help="a manifest to process")
 

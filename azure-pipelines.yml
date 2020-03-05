@@ -74,6 +74,7 @@ stages:
               manifests: $(Build.SourcesDirectory)/misc/*
 
   - deployment: Deploy_Base
+    dependsOn: Deploy_Static_Manifests
     displayName: Deploy Base
     pool:
       vmImage: $(vmImageName)
@@ -82,7 +83,7 @@ stages:
       runOnce:
         deploy:
           steps:
-          # Initial deployment of the application
+          # Base deployment of the application
           # This should be a stable deployment.
           - checkout: self
           - task: KubernetesManifest@0
@@ -95,6 +96,7 @@ stages:
               imagePullSecrets: $(imageName)
 
   - deployment: Deploy_Canary
+    dependsOn: Deploy_Base
     displayName: Deploy Canary
     pool:
       vmImage: $(vmImageName)
@@ -105,21 +107,19 @@ stages:
 
         deploy:
           steps:
-          # create a clone of the manifests we already applied, but "canarized"
+          # create a clone of the Base manifests we already applied, but "canarized":
+          # we will generate a Service/Deployment/Mapping for the Canary, with the built image
           - checkout: self
           - task: UsePythonVersion@0
             displayName: Set Python 3
             inputs:
               versionSpec: '3.x'
+          - script: ./deploy/canarize.py --debug -m -l canary=true --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) -o $(Pipeline.Workspace)/canary.yml -w $(strategy.increment) --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) $(Build.SourcesDirectory)/manifests/*.yml
+            displayName: Generate canary for $(strategy.increment)% traffic
 
-          # generate the Service/Deployment/Mapping for the Canary, with the built image
-          # for every image $(containerRegistry).azurecr.io/$(imageName), replace the tag by $(buildTag)
-          - script: ./deploy/canarize.py --debug -M --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) -o $(Pipeline.Workspace)/canary.yml -w $(strategy.increment) --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) ./manifests/*
-            displayName: Generate canary
-
-          # apply the canary deployment
+          # apply the canary Service/Deployment/Mapping
           - task: KubernetesManifest@0
-            displayName: Deploy canary
+            displayName: Apply canary for $(strategy.increment)% traffic
             inputs:
               action: deploy
               namespace: $(namespace)
@@ -136,43 +136,26 @@ stages:
 
         on:
           # if the canary has failed,
-          # 1) remove the traffic to the canary
-          # 2) remove the canary Service and Deployment
+          # 1) remove the Mapping that sends traffic to the canary, as well as the canary Service and Deployment
           failure:
             steps:
-            - checkout: self
-            - task: UsePythonVersion@0
-              displayName: Set Python 3
-              inputs:
-                versionSpec: '3.x'
-
-            # generate the Service/Deployment for the canary, as well as Mapping
-            # not really important the values: we will use this manifest for removing deleting things
-            - script: ./deploy/canarize.py --debug -o $(Pipeline.Workspace)/canary.yml -m ./manifests/*
-              displayName: Generate manifests for canary
-
-            # remove the Mapping and the Service/Deployment
+            # remove all the Service/Deployment/Mappings of the canary
             - task: KubernetesManifest@0
               displayName: Remove the Canary
               inputs:
                 action: delete
-                arguments: -f $(Pipeline.Workspace)/canary.yml
+                arguments: services,deployments,mappings -l canary=true
                 namespace: $(namespace)
-                manifests: $(Pipeline.Workspace)/canary.yml
 
           # if the canary has been successful,
           # 1) re-apply the manifests but with the image set to use $(buildTag)
-          # 2) remove the traffic to the canary
-          # 3) remove the canary Service and Deployment
+          # 2) remove the Mapping that sends traffic to the canary, as well as the canary Service and Deployment
           success:
             steps:
-            - checkout: self
-            - task: UsePythonVersion@0
-              displayName: Set Python 3
-              inputs:
-                versionSpec: '3.x'
-
             # upgrade the image in the base Service/Deployment for using tag=$(buildTag)
+            # note: we could also use a "Patch" action (https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/deploy/kubernetes-manifest?view=azure-devops#patch-action)
+            #       or a "kubectl set image" (https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
+            - checkout: self
             - task: KubernetesManifest@0
               displayName: Set $(buildTag) as image in base Deployment
               inputs:
@@ -183,16 +166,10 @@ stages:
                 containers: $(containerRegistry).azurecr.io/$(imageName):$(buildTag)
                 imagePullSecrets: $(imageName)
 
-            # generate the Service/Deployment for the canary, as well as Mapping
-            # not really important the values: we wil use this manifest for removing deleting things
-            - script: ./deploy/canarize.py --debug -m -o $(Pipeline.Workspace)/canary.yml ./manifests/*
-              displayName: Generate manifests for Canary
-
-            # remove the Service/Deployment/Mappings of the canary
+            # remove all the Service/Deployment/Mappings of the canary
             - task: KubernetesManifest@0
               displayName: Remove the Canary
               inputs:
                 action: delete
-                arguments: -f $(Pipeline.Workspace)/canary.yml
+                arguments: services,deployments,mappings -l canary=true
                 namespace: $(namespace)
-                manifests: $(Pipeline.Workspace)/canary.yml
