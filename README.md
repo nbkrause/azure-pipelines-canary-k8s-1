@@ -86,17 +86,16 @@ it will create and apply:
   ```shell script
   $ az aks get-credentials --resource-group Ambassador-Azure-Pipeline --name Ambassador-Azure-Pipeline
   ```
-* Install Ambassador in this cluster by following [the instructions](https://www.getambassador.io/user-guide/install/).
-* For example,
+* Install Ambassador in this cluster by following [the instructions](https://www.getambassador.io/user-guide/install/). For example:
   ```shell script
   edgectl install
   ```
-* Install the prometheus operator. You can do it with Helm 3, with:
+* Install the prometheus operator. For example, with Helm 3:
   ```shell script
   helm repo add bitnami https://charts.bitnami.com/bitnami
   helm install prometheus bitnami/prometheus-operator
   ```
-  (You can access it with `kubectl port-forward --namespace default svc/prometheus-prometheus-oper-prometheus 9090:9090`)
+  Prometheus can be accessed with `kubectl port-forward --namespace default svc/prometheus-prometheus-oper-prometheus 9090:9090`
 
 ## Preparing the repo
 
