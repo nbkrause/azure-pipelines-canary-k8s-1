@@ -114,7 +114,7 @@ stages:
             displayName: Set Python 3
             inputs:
               versionSpec: '3.x'
-          - script: ./deploy/canarize.py --debug -m -l canary=true --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) -o $(Pipeline.Workspace)/canary.yml -w $(strategy.increment) --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) $(Build.SourcesDirectory)/manifests/*.yml
+          - script: ./deploy/canarize.py --debug -m -l canary=true,build=$(Build.BuildNumber) --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) -o $(Pipeline.Workspace)/canary.yml -w $(strategy.increment) --image $(containerRegistry).azurecr.io/$(imageName):$(buildTag) $(Build.SourcesDirectory)/manifests/*.yml
             displayName: Generate canary for $(strategy.increment)% traffic
 
           # apply the canary Service/Deployment/Mapping
@@ -144,7 +144,7 @@ stages:
               displayName: Remove the Canary
               inputs:
                 action: delete
-                arguments: services,deployments,mappings -l canary=true
+                arguments: services,deployments,mappings -l canary=true,build=$(Build.BuildNumber)
                 namespace: $(namespace)
 
           # if the canary has been successful,
@@ -171,5 +171,5 @@ stages:
               displayName: Remove the Canary
               inputs:
                 action: delete
-                arguments: services,deployments,mappings -l canary=true
+                arguments: services,deployments,mappings -l canary=true,build=$(Build.BuildNumber)
                 namespace: $(namespace)

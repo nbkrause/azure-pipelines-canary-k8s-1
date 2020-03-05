@@ -75,7 +75,8 @@ traffic to the canary with the given _weight_.
   ```shell script
   $ az aks get-credentials --resource-group Ambassador-Azure-Pipeline --name Ambassador-Azure-Pipeline
   ```
-* Install Ambassador in this cluster by following [the instructions](https://www.getambassador.io/user-guide/install/). For example,
+* Install Ambassador in this cluster by following [the instructions](https://www.getambassador.io/user-guide/install/).
+* For example,
   ```shell script
   edgectl install
   ```
