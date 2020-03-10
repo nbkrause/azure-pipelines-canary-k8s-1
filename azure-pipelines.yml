@@ -23,6 +23,7 @@ variables:
   # we assume the registry will have the same name (ie, $(containerRegistry).azurecr.io)
   containerRegistry: azurepipelinescanaryk8s
   environment: k8sEnvironment.default # replace with the of your Kubernetes service connection and namespace
+  canaryEnvironment: canaryEnvironment.default
   imageName: azure-pipelines-canary-k8s
 
 stages:
@@ -98,7 +99,7 @@ stages:
   - deployment: Deploy_Canary
     dependsOn: Deploy_Base
     displayName: Deploy Canary
-    environment: $(environment)
+    environment: $(canaryEnvironment)
     strategy:
       canary:
         increments: [25, 50]
